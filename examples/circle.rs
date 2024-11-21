@@ -13,27 +13,27 @@ fn gen_data() -> Result<Tensor> {
 }
 
 fn main() -> Result<()> {
-    let sample_xs = gen_data()?;
-    // Use backprop to run a linear regression between samples and get the coefficients back.
-    let varmap = VarMap::new();
-    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
-    let model = Ltc::new(2, 0, vb)?;
-    let params = ParamsAdamW {
-        lr: 0.01,
-        ..Default::default()
-    };
-    let mut opt = AdamW::new(varmap.all_vars(), params)?;
-    for step in 0..1000 {
-        let mut loss = Tensor::zeros(1, DType::F32, &Device::Cpu)?;
-        for i in 0..32 {
-            let x = &sample_xs.i((.., i))?.unsqueeze(0)?;
-            let ys = model.forward(x)?;
-            let mse = (ys.clone().broadcast_sub(x))?.powf(2.0)?.mean(1)?;
-            opt.backward_step(&mse)?;
-            loss = loss.broadcast_add(&mse)?;
-        }
-        println!("loss {:?}", loss.to_vec1::<f32>()?); 
-
-    }   
+    //let sample_xs = gen_data()?;
+    //// Use backprop to run a linear regression between samples and get the coefficients back.
+    //let varmap = VarMap::new();
+    //let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    //let model = LtcNet::new(2, 0,6, vb)?;
+    //let params = ParamsAdamW {
+    //    lr: 0.01,
+    //    ..Default::default()
+    //};
+    //let mut opt = AdamW::new(varmap.all_vars(), params)?;
+    //for step in 0..1000 {
+    //    let mut loss = Tensor::zeros(1, DType::F32, &Device::Cpu)?;
+    //    for i in 0..32 {
+    //        let x = &sample_xs.i((.., i))?.unsqueeze(0)?;
+    //        let (ys, _) = model.forward(x, x)?;
+    //        let mse = (ys.clone().broadcast_sub(x))?.powf(2.0)?.mean(1)?;
+    //        opt.backward_step(&mse)?;
+    //        loss = loss.broadcast_add(&mse)?;
+    //    }
+    //    println!("loss {:?}", loss.to_vec1::<f32>()?); 
+//
+    //}   
     Ok(())
 }
