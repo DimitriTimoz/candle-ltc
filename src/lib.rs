@@ -2,6 +2,8 @@ use candle_core::*;
 use candle_nn::*;
 use ops::sigmoid;
 
+pub mod wirings;
+
 /// !https://github.com/mlech26l/ncps/blob/master/ncps/torch/ltc_cell.py
 pub struct LtcCell {
     input_lin: Linear,
