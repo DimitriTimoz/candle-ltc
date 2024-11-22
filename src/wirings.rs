@@ -8,17 +8,28 @@ pub enum Polarity {
     Inhibitory,
 }
 
+impl Polarity {
+    pub fn value(&self) -> i64 {
+        match self {
+            Self::Excitatory => 1,
+            Self::Inhibitory => -1,
+        }
+    }
+}
+
 pub struct Wiring {
     adjacency_matrix: Tensor,
     input_dim: Option<usize>,
     output_dim: Option<usize>,
     sensory_adjacency_matrix: Option<Tensor>,
+    units: usize,
 }
 
 impl Wiring {
     pub fn new(units: usize, device: &Device) -> Result<Self> {
         Ok(Self {
             adjacency_matrix: Tensor::zeros((units, units), DType::I64, device)?,
+            units,
             input_dim: None,
             output_dim: None,
             sensory_adjacency_matrix: None,
@@ -31,12 +42,38 @@ impl Wiring {
             bail!("Invalid sinapse from {} to {}", from, to);
         }
 
-        let value = match polarity {
-            Polarity::Excitatory => 1i64,
-            Polarity::Inhibitory => -1i64,
-        };
+        let value = polarity.value();
 
-        self.adjacency_matrix.set(&[from, to], value)?;
+        self.adjacency_matrix = self.adjacency_matrix.set(&[from, to], value)?;
+        Ok(())
+    }
+
+    fn is_built(&self) -> bool {
+        self.input_dim.is_some() && self.output_dim.is_some()
+    }
+
+    pub fn add_sensory_sinapse(&mut self, from: usize, to: usize, polarity: Polarity) -> Result<()> {
+        if !self.is_built() {
+            bail!("Cannot add sensory synapses before build() has been called!");
+        }
+
+        if let Some(input_dim) = self.input_dim {
+            if from >= input_dim {
+                bail!("Invalid sensory sinapse from {} to {}", from, to);
+            }
+        }
+
+        if to >= self.units {
+            bail!("Invalid sensory sinapse from {} to {}", from, to);
+        }
+
+        let value = polarity.value();
+        if let Some(sensory_adjacency_matrix) = self.sensory_adjacency_matrix.as_mut() {
+            *sensory_adjacency_matrix = sensory_adjacency_matrix.set(&[from, to], value)?;
+        } else {
+            unreachable!();
+        }
+
         Ok(())
     }
 }
@@ -70,6 +107,24 @@ mod tests {
 
         assert_eq!(tensor.i((0, 0))?.to_scalar::<i64>()?, 1);
         Ok(())
+    }
+
+    #[test]
+    fn test_set_sinapses() {
+        let device = Device::cuda_if_available(0).unwrap();
+        let mut wiring = Wiring::new(4, &device).unwrap();
+        
+        wiring.add_sinapse(0, 0, Polarity::Excitatory).unwrap();
+        wiring.add_sinapse(1, 2, Polarity::Inhibitory).unwrap();
+
+        let adjacency_matrix = wiring.adjacency_matrix.to_vec2::<i64>().unwrap();
+        assert_eq!(adjacency_matrix[0][0], 1);
+        assert_eq!(adjacency_matrix[1][2], -1);
+        assert_eq!(adjacency_matrix[0][1], 0);
+
+        // Test sensory sinapses
+        assert!(wiring.add_sensory_sinapse(0, 1, Polarity::Excitatory).is_err());
+
     }
 
     #[test]
