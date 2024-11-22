@@ -8,3 +8,4 @@ license = "MIT"
 [dependencies]
 candle-core = "0.8"
 candle-nn = "0.8"
+rand = "0.8.5"
