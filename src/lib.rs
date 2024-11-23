@@ -1,11 +1,13 @@
 use candle_core::*;
 use candle_nn::*;
 use ops::sigmoid;
+use wirings::WiringTrait;
 
 pub mod wirings;
 
 /// !https://github.com/mlech26l/ncps/blob/master/ncps/torch/ltc_cell.py
-pub struct LtcCell {
+pub struct LtcCell<W: WiringTrait> {
+    wiring: W,
     input_lin: Linear,
     hidden_lin: Linear,
     out_lin: Linear,
@@ -15,13 +17,18 @@ pub struct LtcCell {
     sensory_weight: Linear,
     weights: Linear,
     sensory_mu: Tensor,
+    sensory_sparsity_mask: Tensor,
 }
 
-impl LtcCell {
-    pub fn new(input_dim: usize, hidden_dim: usize, out_dim: usize, vb: VarBuilder) -> Result<Self> {
+impl<W: WiringTrait> LtcCell<W> {
+    pub fn new(wiring: W, in_features: usize, hidden_dim: usize, out_dim: usize, vb: VarBuilder) -> Result<Self> {
+        let mut wiring = wiring;
+        wiring.build(in_features)?;
+        let sensory_sparsity_mask = Tensor::abs(wiring.get_adjacency_matrix())?;
         let a = Self {
+            wiring,
             activation: Activation::GeluPytorchTanh,
-            input_lin: linear(input_dim, hidden_dim, vb.clone())?,
+            input_lin: linear(in_features, hidden_dim, vb.clone())?,
             hidden_lin: linear(hidden_dim, hidden_dim, vb.clone())?,
             out_lin: linear(hidden_dim, out_dim, vb.clone())?,
             tau: Tensor::from_slice(&[1.0f32], 1, vb.clone().device())?,
@@ -29,6 +36,7 @@ impl LtcCell {
             sensory_weight: linear_no_bias(1, 1, vb.clone())?, // TODO: set shape
             weights: linear_no_bias(1, 1, vb.clone())?, // TODO: set shape
             sensory_mu: Tensor::from_slice(&[1.0f32], 1, vb.device())?, // TODO
+            sensory_sparsity_mask,
         };
         Ok(a)
     }
@@ -40,26 +48,6 @@ impl LtcCell {
 
     fn map_outpu(&self, state: &Tensor) -> Result<Tensor> {
         let x = self.out_lin.forward(state)?;
-        Ok(x)
-    }
-
-    fn fused_state(&self, state: &Tensor, dt: &Tensor, input: &Tensor) -> Result<Tensor> {
-        let one = Tensor::ones(1, state.dtype(), state.device())?;
-        let tau_inv = (one.clone()/self.tau.clone())?;
-        let h = if input.dims()[0] > 0 { 
-            Tensor::cat(&[state.clone(), input.clone()], 1)?
-        } else {
-            state.clone()
-        };
-
-        let h = self.hidden_lin.forward(&h)?.broadcast_add(&self.input_lin.forward(&h)?)?;
-        let f_x = Activation::GeluPytorchTanh.forward(&h)?;
-
-
-        let num_2 = dt.broadcast_mul(&f_x)?.broadcast_mul(&self.a)?;
-        let denom = one.broadcast_add(&dt.broadcast_mul(&tau_inv.broadcast_add(&f_x)?)?)?;
-
-        let x = input.broadcast_div(&denom)?.broadcast_add(&num_2.broadcast_div(&denom)?)?;
         Ok(x)
     }
     
@@ -82,21 +70,6 @@ impl LtcCell {
     }
 }
 
-impl LtcCell {
-    /// Returns the h and next state
-    fn forward(&self, inputs: &Tensor, states: &Tensor, elapsed_time: f32) -> Result<(Tensor, Tensor)> {
-        let inputs = self.map_input(inputs)?;
-        
-        let states = self.solve_ode(states, &inputs, elapsed_time)?;
-        
-        let outputs = self.map_outpu(&states)?;
-        Ok((outputs, states))
-    }
-}
-
-pub struct LtcNet {
-    ltc_layers: Vec<LtcCell>,
-}
 
 //impl LtcNet {
 //    pub fn new(state_dim: usize, input_dim: usize, num_layers: usize, vb: VarBuilder) -> Result<Self> {
@@ -123,26 +96,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ltc_layer() -> Result<()> {
+    fn test_ltc_cellr() -> Result<()> {
         let device = Device::cuda_if_available(0)?;
         let varmap = VarMap::new();
         let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
 
-        let ltc = LtcCell::new(2, 32, 2, vb)?;
-        let x = Tensor::from_slice(&[1.0f32, 1.0f32], &[1,2], &device.clone())?;
-        let input = Tensor::zeros((32), DType::F32, &device)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_ltc_neural_network() -> Result<()> {
-      //  let device = Device::cuda_if_available(0)?;
-      //  let varmap = VarMap::new();
-      //  let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
-//
-      //  let ltc_net = LtcNet::new(1, 1, 2, vb)?;
-      //  let x = Tensor::from_slice(&[1.0f32, 1.0f32], &[1,2], &device.clone())?;
-      //  let y = ltc_net.forward(&x, &x)?;
         Ok(())
     }
 }

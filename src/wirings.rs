@@ -13,7 +13,10 @@ impl Polarity {
     }
 }
 
-pub trait WiringTrait {}
+pub trait WiringTrait {
+    fn build(&mut self, input_dim: usize) -> Result<()>;
+    fn get_adjacency_matrix(&self) -> &Tensor;
+}
 
 pub struct Wiring {
     adjacency_matrix: Tensor,
@@ -32,18 +35,6 @@ impl Wiring {
             output_dim: None,
             sensory_adjacency_matrix: None,
         })
-    }
-
-    pub fn build(&mut self, input_dim: usize) -> Result<()>{
-        if let Some(setted_input_dim) = self.input_dim {
-           if setted_input_dim != input_dim {
-               bail!("Conflicting input dimensions: {} != {}", setted_input_dim, input_dim);
-           }
-        } else {
-            self.set_input_dim(input_dim);
-        }
-
-        Ok(())
     }
 
     pub fn set_input_dim(&mut self, input_dim: usize) {
@@ -97,6 +88,24 @@ impl Wiring {
     }
 }
 
+impl WiringTrait for Wiring {
+    fn build(&mut self, input_dim: usize) -> Result<()> {
+        if let Some(setted_input_dim) = self.input_dim {
+            if setted_input_dim != input_dim {
+                bail!("Conflicting input dimensions: {} != {}", setted_input_dim, input_dim);
+            }
+         } else {
+             self.set_input_dim(input_dim);
+         }
+         
+         Ok(())
+     }
+
+    fn get_adjacency_matrix(&self) -> &Tensor {
+        &self.adjacency_matrix
+    }
+}
+
 pub struct FullyConnected{
     wiring: Wiring,
     self_connection: bool,
@@ -127,8 +136,10 @@ impl FullyConnected {
             self_connection,
         })
     }
+}
 
-    pub fn build(&mut self, input_shape: usize) -> Result<()> {
+impl WiringTrait for FullyConnected {
+    fn build(&mut self, input_shape: usize) -> Result<()> {
         self.wiring.build(input_shape)?;
         for src in 0..input_shape {
             for dest in 0..self.wiring.units {
@@ -140,7 +151,9 @@ impl FullyConnected {
         Ok(())
     }
 
-    
+    fn get_adjacency_matrix(&self) -> &Tensor {
+        self.wiring.get_adjacency_matrix()
+    }
 }
 
 
